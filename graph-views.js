@@ -3,19 +3,13 @@
 
   const data = window.EMBEDDING_DATA;
   const points = data.points;
+  const forceModel = window.FORCE_MODEL;
+  if (!forceModel) throw new Error("Shared force model did not load.");
   const similarityPayload = window.ALL_PAIR_SIMILARITY;
   if (!similarityPayload || similarityPayload.count !== points.length) throw new Error("All-pair similarity data did not load.");
   const similarityBinary = atob(similarityPayload.data);
   const allPairSimilarity = Uint8Array.from(similarityBinary, (character) => character.charCodeAt(0));
-  const similarityHistogram = new Uint32Array(256);
-  allPairSimilarity.forEach((value) => similarityHistogram[value]++);
-  const inverseSquareRankDistance = new Float32Array(256);
-  let pairsAbove = 0;
-  for (let value = 255; value >= 0; value--) {
-    const averageDescendingRank = pairsAbove + (similarityHistogram[value] + 1) / 2;
-    inverseSquareRankDistance[value] = Math.sqrt(averageDescendingRank / allPairSimilarity.length);
-    pairsAbove += similarityHistogram[value];
-  }
+  const inverseSquareRankDistance = forceModel.makeTargetLookup(allPairSimilarity);
   const COLORS = [
     "#70dfc4", "#e99b65", "#a8d46f", "#c88be0",
     "#f0c967", "#71a9ee", "#e7768e", "#8cd5e2",
@@ -420,54 +414,21 @@
   function stepPhysics() {
     const nodes = physicsState.nodes;
     const idealDistance = Math.max(12, 82 * Math.sqrt(42 / Math.max(42, nodes.length)));
-    nodes.forEach((node) => { node.fx = -node.x * .0014; node.fy = -node.y * .0014; });
+    forceModel.initializeForces(nodes);
 
     // Exact and Barnes–Hut both approximate the same Fruchterman–Reingold
     // repulsive force. This selector affects computation, not semantic edges.
     const method = resolveRepulsionMethod(nodes.length);
-    if (method === "exact") applyExactRepulsion(nodes, idealDistance);
+    if (method === "exact") forceModel.applyExactRepulsion(nodes, idealDistance, physicsState.heat);
     else applyBarnesHutRepulsion(nodes, idealDistance);
-    applyAllPairSemanticStress(nodes, idealDistance);
-
-    nodes.forEach((node) => {
-      if (node.fixed) { node.vx = 0; node.vy = 0; return; }
-      node.vx = (node.vx + node.fx) * .86;
-      node.vy = (node.vy + node.fy) * .86;
-      node.x += node.vx; node.y += node.vy;
-    });
+    forceModel.applySemanticStress(
+      nodes,
+      idealDistance,
+      physicsState.heat,
+      (one, two) => inverseSquareRankDistance[similarityByteForPair(one, two)],
+    );
+    forceModel.integrate(nodes);
     physicsState.heat = Math.max(.09, physicsState.heat * .992);
-  }
-
-  function applyAllPairSemanticStress(nodes, idealDistance) {
-    const strength = .04 / Math.max(1, nodes.length);
-    for (let a = 0; a < nodes.length; a++) {
-      for (let b = a + 1; b < nodes.length; b++) {
-        const one = nodes[a], two = nodes[b];
-        let dx = two.x - one.x, dy = two.y - one.y;
-        const distance = Math.max(.01, Math.hypot(dx, dy));
-        if (distance < .02) { dx = .01 + (a % 3) * .005; dy = .01 + (b % 3) * .005; }
-        const normalizedTarget = inverseSquareRankDistance[similarityByteForPair(one.index, two.index)];
-        const targetDistance = idealDistance * normalizedTarget;
-        const sammonWeight = 1 / (normalizedTarget + .001);
-        // Prioritize pairs that are close in the layout as it currently exists,
-        // in addition to Sammon's semantic-target weighting. Normalizing by the
-        // ideal distance keeps the factor consistent as the field size changes;
-        // the clamp prevents an accidental overlap from monopolizing the step.
-        const rawProximityWeight = idealDistance / (distance + idealDistance * .05);
-        const currentProximityWeight = Math.min(4, Math.max(.35, rawProximityWeight));
-        const proximityDerivative = rawProximityWeight === currentProximityWeight
-          ? -idealDistance / ((distance + idealDistance * .05) ** 2)
-          : 0;
-        const error = distance - targetDistance;
-        // Include the derivative of the changing weight so this remains the
-        // gradient of the same weighted force used to make the settled view.
-        const weightedError = (sammonWeight + currentProximityWeight) * error
-          + .5 * proximityDerivative * error * error;
-        const force = weightedError * strength * (.45 + physicsState.heat * .55);
-        const forceX = dx / distance * force, forceY = dy / distance * force;
-        one.fx += forceX; one.fy += forceY; two.fx -= forceX; two.fy -= forceY;
-      }
-    }
   }
 
   function resolveRepulsionMethod(nodeCount) {
@@ -485,14 +446,6 @@
     const label = physicsState.activeRepulsion === "exact" ? "exact O(n²)" : "Barnes–Hut O(n log n)";
     const automatic = physicsState.repulsionMode === "auto" ? "Automatic · " : "";
     document.querySelector("#physics-method-status").textContent = `${automatic}${label} repulsion · semantic stress O(n²)`;
-  }
-
-  function applyExactRepulsion(nodes, idealDistance) {
-    for (let a = 0; a < nodes.length; a++) {
-      for (let b = a + 1; b < nodes.length; b++) {
-        repelPair(nodes[a], nodes[b], a, b, idealDistance, true);
-      }
-    }
   }
 
   function repelPair(one, two, a, b, idealDistance, symmetric) {

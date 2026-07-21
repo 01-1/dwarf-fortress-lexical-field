@@ -16,12 +16,12 @@ import base64
 import json
 import math
 import re
+import subprocess
 import sys
 from collections import Counter
 from pathlib import Path
 
 import numpy as np
-from scipy.stats import rankdata
 from sklearn.cluster import KMeans
 from sklearn.feature_extraction.text import HashingVectorizer
 from sklearn.linear_model import Ridge
@@ -160,127 +160,6 @@ def spread_homographs(entries: list[tuple[str, str]], projection: np.ndarray) ->
             projection[index] += np.array([math.cos(angle), math.sin(angle)]) * 0.018
 
 
-def inverse_square_rank_distances(similarities: np.ndarray) -> np.ndarray:
-    """Map cosine to normalized inverse of the square-rank-largest curve."""
-    count = len(similarities)
-    rows, columns = np.triu_indices(count, 1)
-    values = similarities[rows, columns]
-    descending_ranks = rankdata(-values, method="average").astype(np.float32)
-    targets = np.sqrt(descending_ranks / len(values), dtype=np.float32)
-    distances = np.zeros((count, count), dtype=np.float32)
-    distances[rows, columns] = targets
-    distances[columns, rows] = targets
-    return distances
-
-
-def precompute_force_layout(similarities: np.ndarray, initial: np.ndarray) -> tuple[np.ndarray, dict]:
-    """Run the browser force equations over every word until motion settles."""
-    targets = inverse_square_rank_distances(similarities)
-    count = len(targets)
-    ideal_distance = max(12.0, 82.0 * math.sqrt(42 / max(42, count)))
-    semantic_weights = 1 / (targets + 1e-3)
-    np.fill_diagonal(semantic_weights, 0)
-
-    # Match stepPhysics(): centered acceleration, exact repulsion, dynamic
-    # all-pairs semantic stress, velocity damping, and cooling. The t-SNE seed
-    # starts near the target-distance scale but does not constrain the result.
-    positions = np.asarray(initial, dtype=np.float64) * (ideal_distance * 0.5)
-    positions -= np.mean(positions, axis=0)
-    jitter_angles = np.arange(count) * 2.399963229728653
-    positions += np.column_stack((np.cos(jitter_angles), np.sin(jitter_angles))) * (ideal_distance * 1e-4)
-    velocities = np.zeros_like(positions)
-    heat = 1.0
-    strength = 0.04 / count
-    batch_size = 256
-    settled_steps = 0
-    required_settled_steps = 40
-    velocity_tolerance = ideal_distance * 2e-3
-    upper_velocity_tolerance = ideal_distance * 8e-3
-    iterations = 0
-
-    while settled_steps < required_settled_steps:
-        forces = -positions * 0.0014
-        heat_factor = 0.45 + heat * 0.55
-
-        for left in range(0, count, batch_size):
-            right = min(left + batch_size, count)
-            dx = positions[np.newaxis, :, 0] - positions[left:right, np.newaxis, 0]
-            dy = positions[np.newaxis, :, 1] - positions[left:right, np.newaxis, 1]
-            distances_squared = dx * dx + dy * dy
-            local_rows = np.arange(right - left)
-            global_rows = np.arange(left, right)
-            distances_squared[local_rows, global_rows] = np.inf
-            safe_distances_squared = np.maximum(distances_squared, 1e-4)
-            distances = np.sqrt(safe_distances_squared)
-
-            repulsion = np.minimum(
-                0.04,
-                (ideal_distance * ideal_distance / safe_distances_squared) * 0.018,
-            ) * heat
-            forces[left:right, 0] -= np.sum(dx * repulsion, axis=1)
-            forces[left:right, 1] -= np.sum(dy * repulsion, axis=1)
-
-            normalized_targets = targets[left:right]
-            errors = distances - ideal_distance * normalized_targets
-            errors[local_rows, global_rows] = 0
-            raw_proximity = ideal_distance / (distances + ideal_distance * 0.05)
-            proximity = np.clip(raw_proximity, 0.35, 4.0)
-            proximity_derivative = np.where(
-                raw_proximity == proximity,
-                -ideal_distance / np.square(distances + ideal_distance * 0.05),
-                0,
-            )
-            combined_weights = semantic_weights[left:right] + proximity
-            weighted_errors = combined_weights * errors + 0.5 * proximity_derivative * errors * errors
-            semantic_force = weighted_errors * strength * heat_factor
-            forces[left:right, 0] += np.sum(dx / distances * semantic_force, axis=1)
-            forces[left:right, 1] += np.sum(dy / distances * semantic_force, axis=1)
-
-        velocities = (velocities + forces) * 0.86
-        positions += velocities
-        heat = max(0.09, heat * 0.992)
-        iterations += 1
-
-        speeds = np.linalg.norm(velocities, axis=1)
-        rms_velocity = float(np.sqrt(np.mean(speeds * speeds)))
-        upper_velocity = float(np.percentile(speeds, 99))
-        maximum_velocity = float(np.max(speeds))
-        if rms_velocity < velocity_tolerance and upper_velocity < upper_velocity_tolerance:
-            settled_steps += 1
-        else:
-            settled_steps = 0
-        if not np.all(np.isfinite(positions)):
-            raise RuntimeError("Full force layout diverged before settling")
-        if iterations % 100 == 0:
-            print(
-                f"Force layout iteration {iterations}: "
-                f"RMS velocity {rms_velocity:.6f}, p99 {upper_velocity:.6f}, "
-                f"max {maximum_velocity:.6f}",
-                flush=True,
-            )
-
-    diagnostics = {
-        "iterations": iterations,
-        "settledSteps": settled_steps,
-        "requiredSettledSteps": required_settled_steps,
-        "rmsVelocity": round(rms_velocity, 8),
-        "p99Velocity": round(upper_velocity, 8),
-        "maximumVelocity": round(maximum_velocity, 8),
-        "velocityTolerance": velocity_tolerance,
-        "p99VelocityTolerance": upper_velocity_tolerance,
-        "finalHeat": heat,
-        "repulsion": "exact O(n^2)",
-        "semanticForce": "exact O(n^2)",
-        "allNodesMovable": True,
-        "pairWeight": "1 / (target + 0.001) + clamp(ideal / (current_distance + 0.05 * ideal), 0.35, 4)",
-    }
-    layout = positions
-    layout -= np.median(layout, axis=0)
-    radius = np.percentile(np.linalg.norm(layout, axis=1), 99)
-    diagnostics["normalizationRadius"] = round(float(radius), 8)
-    return layout / max(radius, 1e-6), diagnostics
-
-
 def write_similarity_payload(similarities: np.ndarray) -> None:
     """Store the upper triangle as 8-bit cosine values for live all-pair forces."""
     rows, columns = np.triu_indices(len(similarities), 1)
@@ -342,13 +221,12 @@ def main() -> None:
     projection, labels, centers = project_and_cluster(matrix)
     spread_homographs(entries, projection)
     similarities = cosine_similarity(matrix)
-    force_layout, force_diagnostics = precompute_force_layout(similarities, projection)
     write_similarity_payload(similarities)
     similarity_order = similarity_order_curves(similarities)
     np.fill_diagonal(similarities, -np.inf)
 
     points = []
-    for idx, ((word, pos), xy, force_xy) in enumerate(zip(entries, projection, force_layout)):
+    for idx, ((word, pos), xy) in enumerate(zip(entries, projection)):
         nearest = np.argpartition(-similarities[idx], 8)[:8]
         nearest = nearest[np.argsort(-similarities[idx, nearest])]
         points.append({
@@ -356,8 +234,8 @@ def main() -> None:
             "p": pos,
             "x": round(float(xy[0]), 5),
             "y": round(float(xy[1]), 5),
-            "fx": round(float(force_xy[0]), 5),
-            "fy": round(float(force_xy[1]), 5),
+            "fx": round(float(xy[0]), 5),
+            "fy": round(float(xy[1]), 5),
             "c": int(labels[idx]),
             "nn": [int(value) for value in nearest],
             "ns": [round(float(similarities[idx, value]), 5) for value in nearest],
@@ -374,8 +252,8 @@ def main() -> None:
             "estimatedEntries": int(estimated.sum()),
             "model": "GloVe 6B · 50 dimensions",
             "projection": "t-SNE · cosine distance",
-            "graphLayout": "settled exact all-pairs force simulation",
-            "graphDiagnostics": force_diagnostics,
+            "graphLayout": "pending shared JavaScript force simulation",
+            "graphDiagnostics": {},
         },
         "points": points,
         "clusters": cluster_labels,
@@ -384,6 +262,7 @@ def main() -> None:
     OUTPUT.write_text(
         "window.EMBEDDING_DATA=" + json.dumps(payload, separators=(",", ":")) + ";\n"
     )
+    subprocess.run(["node", str(ROOT / "settle-force.js")], cwd=ROOT, check=True)
     print(
         f"Wrote {OUTPUT.name}: {len(entries)} points, "
         f"{estimated.sum()} morphology-estimated, {OUTPUT.stat().st_size / 1024:.0f} KiB"

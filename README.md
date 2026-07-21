@@ -39,7 +39,9 @@ server requirement. Open `index.html` directly in a browser.
 ## Regenerate the embedding
 
 Install the Python dependencies and provide a GloVe-format vector file. The
-50-dimensional `glove.6B.50d.txt` model matches the checked-in payload.
+50-dimensional `glove.6B.50d.txt` model matches the checked-in payload. Node.js
+is also required to run the same `force-model.js` implementation used by the
+browser when baking the settled-force coordinates.
 
 ```sh
 python -m pip install -r requirements.txt
