@@ -33,7 +33,7 @@ button { color: inherit; }
   position: relative;
   z-index: 20;
   display: grid;
-  grid-template-columns: 1fr minmax(280px, 470px) 1fr;
+  grid-template-columns: minmax(230px, 1fr) auto minmax(240px, 420px) minmax(120px, 1fr);
   align-items: center;
   gap: 28px;
   padding: 0 30px;
@@ -91,7 +91,40 @@ kbd { position: absolute; right: 12px; top: 11px; min-width: 22px; padding: 3px 
 .icon-button:not(.active) .play-icon { display: block; }
 .text-button { padding: 0 13px; color: #aab2be; font-size: 11px; font-weight: 650; letter-spacing: .02em; }
 
-.stage { position: relative; min-height: 0; overflow: hidden; }
+.header-actions.context-hidden { opacity: 0; pointer-events: none; }
+
+.view-tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255,255,255,.025);
+}
+
+.view-tab {
+  min-height: 31px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 5px;
+  color: #6f7987;
+  background: transparent;
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .045em;
+  white-space: nowrap;
+}
+
+.view-tab:hover { color: #bbc2cb; }
+.view-tab.active { color: var(--ink); background: rgba(255,255,255,.09); box-shadow: 0 1px 5px rgba(0,0,0,.2); }
+.view-tab:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
+
+.workspace { position: relative; min-height: 0; overflow: hidden; }
+.view-panel { position: absolute; inset: 0; }
+.view-panel[hidden] { display: none; }
+.stage { overflow: hidden; }
 #map { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
 #map.dragging { cursor: grabbing; }
 .grain { pointer-events: none; position: absolute; inset: 0; opacity: .11; background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 160 160' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.82' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.14'/%3E%3C/svg%3E"); }
@@ -150,15 +183,159 @@ footer p { display: flex; align-items: center; gap: 7px; margin: 0; }
 footer strong { color: #8e98a6; font-weight: 650; }
 .status-light { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px rgba(137,229,194,.8); }
 
+/* Static and live graph views */
+.graph-stage {
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 56% 48%, rgba(33,54,53,.18), transparent 48%),
+    #080c12;
+}
+
+.graph-stage > canvas { display: block; width: 100%; height: 100%; cursor: crosshair; touch-action: none; }
+.graph-stage > canvas.dragging { cursor: grabbing; }
+.physics-stage > canvas { cursor: grab; }
+
+.graph-intro {
+  position: absolute;
+  z-index: 3;
+  top: clamp(34px, 7vh, 76px);
+  left: 30px;
+  width: min(270px, calc(100% - 60px));
+  pointer-events: none;
+}
+
+.graph-intro h2 {
+  margin: 14px 0 15px;
+  color: rgba(243,240,232,.95);
+  font: 400 clamp(37px, 4.3vw, 67px)/.91 Georgia, "Times New Roman", serif;
+  letter-spacing: -.045em;
+}
+
+.graph-intro > p:last-child { margin: 0; max-width: 34ch; color: #737d89; font-size: 10px; line-height: 1.65; }
+.graph-intro .eyebrow { display: flex; align-items: center; gap: 8px; color: #6f7b87; }
+
+.graph-focus {
+  position: absolute;
+  z-index: 5;
+  right: 24px;
+  bottom: 24px;
+  width: 245px;
+  min-height: 128px;
+  padding: 17px;
+}
+
+.graph-focus-label { margin: 0 0 7px; color: #66717f; font-size: 8px; font-weight: 750; letter-spacing: .13em; text-transform: uppercase; }
+.graph-focus h2 { overflow: hidden; margin: 0; font: 400 29px/1.05 Georgia, serif; letter-spacing: -.025em; text-overflow: ellipsis; white-space: nowrap; }
+.graph-focus-meta { margin: 6px 0 12px; color: var(--muted); font-size: 9px; line-height: 1.45; }
+.graph-neighbors { display: flex; flex-wrap: wrap; gap: 5px; }
+.graph-neighbors button {
+  padding: 4px 6px;
+  border: 1px solid rgba(255,255,255,.07);
+  border-radius: 4px;
+  color: #9ea7b1;
+  background: rgba(255,255,255,.025);
+  cursor: pointer;
+  font-size: 9px;
+}
+.graph-neighbors button:hover { border-color: rgba(137,229,194,.35); color: var(--accent); }
+
+.similarity-curve {
+  position: absolute;
+  z-index: 5;
+  top: 24px;
+  right: 24px;
+  width: min(330px, calc(100% - 48px));
+  padding: 14px 15px 10px;
+}
+.similarity-curve-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.similarity-curve-heading p { margin: 0 0 4px; color: #66717f; font-size: 8px; font-weight: 750; letter-spacing: .12em; text-transform: uppercase; }
+.similarity-curve-heading h3 { margin: 0; color: #cdd3d8; font: 400 14px/1.1 Georgia, serif; }
+.similarity-curve-heading output { color: #85909c; font: 8px/1.4 ui-monospace, monospace; text-align: right; white-space: nowrap; }
+#similarity-chart, #ascending-chart { display: block; width: 100%; height: 112px; margin-top: 10px; cursor: crosshair; }
+.similarity-axis { display: flex; justify-content: space-between; margin-top: 4px; color: #56616e; font-size: 7px; letter-spacing: .04em; text-transform: uppercase; }
+.similarity-curve-divider { height: 1px; margin: 17px 0 14px; background: var(--line); }
+.similarity-view .similarity-curve { top: clamp(44px, 10vh, 100px); right: 30px; left: min(31vw, 390px); width: auto; padding: 20px 22px 14px; }
+.similarity-view #similarity-chart, .similarity-view #ascending-chart { height: clamp(130px, 23vh, 220px); margin-top: 13px; }
+.similarity-view .similarity-curve-heading h3 { font-size: 19px; }
+
+.graph-zoom {
+  position: absolute;
+  z-index: 5;
+  bottom: 24px;
+  left: 30px;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  height: 34px;
+}
+.graph-zoom button { height: 100%; padding: 0 12px; border: 0; color: #7d8794; background: transparent; cursor: pointer; font-size: 10px; }
+.graph-zoom button:first-child, .graph-zoom button:last-child { width: 36px; padding: 0; font-size: 17px; }
+.graph-zoom button:hover { color: var(--ink); background: rgba(255,255,255,.07); }
+
+.graph-caption {
+  position: absolute;
+  z-index: 3;
+  bottom: 35px;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  transform: translateX(-50%);
+  color: rgba(140,150,162,.56);
+  font-size: 8px;
+  letter-spacing: .055em;
+  pointer-events: none;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.graph-caption > span { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
+.graph-caption i { width: 2px; height: 2px; border-radius: 50%; background: rgba(255,255,255,.25); }
+.live-simulation-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #f1b865; box-shadow: 0 0 10px rgba(241,184,101,.7); }
+
+.physics-actions { display: flex; gap: 6px; margin-top: 14px; padding-top: 11px; border-top: 1px solid var(--line); }
+.physics-actions button { flex: 1; padding: 7px; border: 1px solid var(--line); border-radius: 5px; color: #aeb6bf; background: rgba(255,255,255,.035); cursor: pointer; font-size: 9px; font-weight: 700; }
+.physics-actions button:hover { border-color: rgba(241,184,101,.35); color: #f1c37e; }
+.physics-stage.paused .live-simulation-dot { background: #697380; box-shadow: none; }
+
+.physics-size-control { margin-top: 14px; padding-top: 11px; border-top: 1px solid var(--line); }
+.physics-size-control label { display: flex; justify-content: space-between; margin-bottom: 8px; color: #6f7986; font-size: 8px; font-weight: 750; letter-spacing: .1em; text-transform: uppercase; }
+.physics-size-control output { color: #aeb6bf; font-weight: 600; letter-spacing: .02em; text-transform: none; }
+.physics-size-control input { width: 100%; height: 14px; margin: 0; accent-color: #f1b865; cursor: ew-resize; }
+
+.physics-method-control { margin-top: 12px; }
+.physics-method-control label { display: block; margin-bottom: 6px; color: #6f7986; font-size: 8px; font-weight: 750; letter-spacing: .1em; text-transform: uppercase; }
+.physics-method-control select {
+  width: 100%;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  outline: none;
+  color: #c4cbd3;
+  background: #111720;
+  cursor: pointer;
+  font-size: 9px;
+}
+.physics-method-control select:focus { border-color: rgba(241,184,101,.5); }
+.physics-method-control p { margin: 6px 0 0; color: #66717e; font-size: 8px; }
+
+@media (max-width: 1150px) and (min-width: 851px) {
+  .masthead { grid-template-columns: minmax(190px, 1fr) auto minmax(220px, 320px); gap: 14px; }
+  .header-actions { display: none; }
+  .view-tab { padding: 0 8px; font-size: 8px; }
+}
+
 @media (max-width: 850px) {
   .app-shell { grid-template-rows: 76px 1fr 34px; }
-  .masthead { grid-template-columns: auto 1fr; gap: 16px; padding: 0 16px; }
+  .masthead { grid-template-columns: auto 1fr; gap: 10px 16px; padding: 0 16px; }
   .identity .eyebrow, .header-actions .icon-button, .header-actions .text-button { display: none; }
   .identity { min-width: 0; }
   .identity h1 { font-size: 19px; }
   .search-wrap { grid-column: 2; grid-row: 1; }
+  .view-tabs { position: absolute; top: 83px; left: 50%; z-index: 30; transform: translateX(-50%); background: rgba(9,13,20,.92); backdrop-filter: blur(12px); }
   .header-actions { display: none; }
-  .filters { top: 12px; left: 12px; width: 200px; }
+  .filters { top: 58px; left: 12px; width: 200px; }
   .inspector { top: auto; right: 12px; bottom: 52px; left: 12px; width: auto; min-height: 0; }
   .inspector-empty { display: none; }
   .inspector:has(.inspector-content[hidden]) { display: none; }
@@ -166,6 +343,11 @@ footer strong { color: #8e98a6; font-weight: 650; }
   .map-hint { display: none; }
   footer { padding: 0 16px; }
   footer p:last-child { display: none; }
+  .graph-intro { top: 64px; left: 18px; }
+  .graph-focus { right: 12px; bottom: 54px; width: 220px; }
+  .similarity-view .similarity-curve { top: 58px; right: 12px; left: 230px; width: auto; }
+  .graph-zoom { left: 12px; bottom: 12px; }
+  .graph-caption { display: none; }
 }
 
 @media (max-width: 520px) {
@@ -180,6 +362,12 @@ footer strong { color: #8e98a6; font-weight: 650; }
   .filter b, .filter { font-size: 0; }
   .filter i { width: 8px; height: 8px; }
   .mode-row { padding-top: 9px; }
+  .view-tab { padding: 0 8px; font-size: 8px; }
+  .graph-intro h2 { font-size: 38px; }
+  .graph-intro > p:last-child { display: none; }
+  .graph-focus { left: 12px; width: auto; }
+  .similarity-view .similarity-curve { display: block; top: 114px; left: 12px; right: 12px; width: auto; }
+  .similarity-view #similarity-chart, .similarity-view #ascending-chart { height: 130px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

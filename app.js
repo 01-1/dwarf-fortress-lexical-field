@@ -8,6 +8,7 @@
   const ctx = canvas.getContext("2d", { alpha: true });
   const stage = document.querySelector(".stage");
   const points = data.points;
+  const defaultIndex = Math.max(0, points.findIndex((point) => point.w === "cat" && point.p === "n"));
 
   const CLUSTER_COLORS = [
     "#70dfc4", "#e99b65", "#a8d46f", "#c88be0",
@@ -23,7 +24,7 @@
     zoom: 1, panX: 0, panY: 0,
     targetZoom: 1, targetPanX: 0, targetPanY: 0,
     pointerX: -1000, pointerY: -1000,
-    hovered: null, selected: null,
+    hovered: defaultIndex, selected: null,
     dragging: false, dragMoved: false, dragStartX: 0, dragStartY: 0,
     panStartX: 0, panStartY: 0,
     activePos: new Set(["n", "v", "adj", "?"]),
@@ -196,7 +197,7 @@
     state.panX += (state.targetPanX - state.panX) * .16;
     state.panY += (state.targetPanY - state.panY) * .16;
     const stillAnimating = Math.abs(state.targetZoom - state.zoom) > .001 || Math.abs(state.targetPanX - state.panX) > .1 || Math.abs(state.targetPanY - state.panY) > .1;
-    if (state.motion || state.needsDraw || stillAnimating) {
+    if (!stage.hidden && (state.motion || state.needsDraw || stillAnimating)) {
       drawBackground();
       const focus = state.selected ?? state.hovered;
       drawConnections(focus);
@@ -371,8 +372,8 @@
 
   function resetView() {
     state.targetZoom = 1; state.targetPanX = 0; state.targetPanY = 0;
-    state.selected = null; state.hovered = null;
-    updateInspector(null); updateZoomReadout(); state.needsDraw = true;
+    state.selected = null; state.hovered = defaultIndex;
+    updateInspector(defaultIndex); updateZoomReadout(); state.needsDraw = true;
   }
 
   const search = document.querySelector("#search");
@@ -406,7 +407,7 @@
   function chooseSearchResult(index) {
     search.value = points[index].w;
     searchResults.classList.remove("open");
-    selectPoint(index, true);
+    if (!window.LexicalViews?.selectSearchResult(index)) selectPoint(index, true);
     search.blur();
   }
 
@@ -417,7 +418,7 @@
   });
   document.addEventListener("keydown", (event) => {
     if (event.key === "/" && document.activeElement !== search) { event.preventDefault(); search.focus(); }
-    if (event.key === "Escape" && document.activeElement !== search) resetView();
+    if (event.key === "Escape" && document.activeElement !== search && !window.LexicalViews?.handleEscape()) resetView();
   });
   document.addEventListener("pointerdown", (event) => {
     if (!event.target.closest(".search-wrap")) searchResults.classList.remove("open");
@@ -426,5 +427,7 @@
   new ResizeObserver(resize).observe(stage);
   resize();
   syncFilters();
+  updateInspector(defaultIndex);
+  window.LexicalMap = { resize, resetView, selectPoint };
   requestAnimationFrame(render);
 })();

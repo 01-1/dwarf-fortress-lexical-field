@@ -18,6 +18,13 @@
         </div>
       </div>
 
+      <nav class="view-tabs" role="tablist" aria-label="Visualization mode">
+        <button class="view-tab active" id="map-tab" type="button" role="tab" aria-selected="true" aria-controls="map-view" data-view="map">Embedding map</button>
+        <button class="view-tab" id="physics-tab" type="button" role="tab" aria-selected="false" aria-controls="physics-view" data-view="physics">Physics demo</button>
+        <button class="view-tab" id="static-tab" type="button" role="tab" aria-selected="false" aria-controls="static-view" data-view="static">Settled force</button>
+        <button class="view-tab" id="similarity-tab" type="button" role="tab" aria-selected="false" aria-controls="similarity-view" data-view="similarity">Similarity curve</button>
+      </nav>
+
       <div class="search-wrap">
         <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m21 21-4.35-4.35m2.35-5.15a7.5 7.5 0 1 1-15 0 7.5 7.5 0 0 1 15 0Z"/></svg>
         <input id="search" type="search" autocomplete="off" spellcheck="false" placeholder="Find a word…" aria-label="Find a word">
@@ -37,7 +44,100 @@
       </div>
     </header>
 
-    <section class="stage" aria-label="Interactive word embedding">
+    <div class="workspace">
+      <section id="static-view" class="view-panel graph-stage" role="tabpanel" aria-labelledby="static-tab" hidden>
+        <canvas id="static-map" aria-label="Settled full-field semantic force layout. Drag to pan, scroll to zoom, and select the nearest word."></canvas>
+        <div class="grain" aria-hidden="true"></div>
+        <div class="graph-intro">
+          <p class="eyebrow">Settled full-field simulation</p>
+          <h2>Meaning,<br>held in tension.</h2>
+          <p>The live force equations ran over every word with exact all-pairs forces until motion settled.</p>
+        </div>
+        <aside class="graph-focus panel" aria-live="polite">
+          <p class="graph-focus-label">Nearest word</p>
+          <h2 id="static-word">cat</h2>
+          <p id="static-meta" class="graph-focus-meta"></p>
+          <div id="static-neighbors" class="graph-neighbors"></div>
+        </aside>
+        <div class="graph-zoom panel" aria-label="Settled force view zoom controls">
+          <button id="static-zoom-in" type="button" aria-label="Zoom in">+</button>
+          <button id="static-reset" type="button">Reset</button>
+          <button id="static-zoom-out" type="button" aria-label="Zoom out">−</button>
+        </div>
+        <p class="graph-caption"><span></span> 2,390,391 semantic pairs <i></i> Exact repulsion <i></i> Settled offline</p>
+      </section>
+
+      <section id="physics-view" class="view-panel graph-stage physics-stage" role="tabpanel" aria-labelledby="physics-tab" hidden>
+        <canvas id="physics-map" aria-label="Live semantic spring simulation. Drag nodes and click a word to make it the anchor."></canvas>
+        <div class="grain" aria-hidden="true"></div>
+        <div class="graph-intro">
+          <p class="eyebrow"><span class="live-simulation-dot"></span> Live local simulation</p>
+          <h2>Pull on<br>a meaning.</h2>
+          <p>All inverse-rank pair targets add Sammon and current-layout proximity weights. Drag a node, or click one to rebuild around it.</p>
+        </div>
+        <aside class="graph-focus physics-focus panel" aria-live="polite">
+          <p class="graph-focus-label">Anchor word</p>
+          <h2 id="physics-word">cat</h2>
+          <p id="physics-meta" class="graph-focus-meta"></p>
+          <div id="physics-neighbors" class="graph-neighbors"></div>
+          <div class="physics-size-control">
+            <label for="physics-size">Field size <output id="physics-size-value" for="physics-size">42 words</output></label>
+            <input id="physics-size" type="range" min="10" max="2187" step="1" value="42">
+          </div>
+          <div class="physics-method-control">
+            <label for="physics-method">Repulsion calculation</label>
+            <select id="physics-method">
+              <option value="auto" selected>Automatic</option>
+              <option value="exact">Exact O(n²)</option>
+              <option value="barnes-hut">Barnes–Hut O(n log n)</option>
+            </select>
+            <p id="physics-method-status">Automatic · exact O(n²) repulsion · semantic stress O(n²)</p>
+          </div>
+          <div class="physics-actions">
+            <button id="physics-toggle" type="button">Pause</button>
+            <button id="physics-reheat" type="button">Reheat</button>
+          </div>
+        </aside>
+        <div class="graph-zoom physics-zoom" aria-label="Physics view zoom controls">
+          <button id="physics-zoom-in" type="button" aria-label="Zoom in">+</button>
+          <button id="physics-fit" type="button">Fit</button>
+          <button id="physics-zoom-out" type="button" aria-label="Zoom out">−</button>
+        </div>
+        <p class="graph-caption"><span class="live-simulation-dot"></span> Simulation live <i></i> Wheel to zoom <i></i> Shift-drag to pan</p>
+      </section>
+
+      <section id="similarity-view" class="view-panel graph-stage similarity-view" role="tabpanel" aria-labelledby="similarity-tab" hidden>
+        <div class="grain" aria-hidden="true"></div>
+        <div class="graph-intro">
+          <p class="eyebrow">All 2,390,391 non-self word pairs</p>
+          <h2>Similarity,<br>in order.</h2>
+          <p>The first curve defines layout distance from descending square ranks. The second is the ordinary ascending distribution, shown only for reference.</p>
+        </div>
+        <aside class="similarity-curve panel">
+          <div class="similarity-curve-heading">
+            <div>
+              <p>Operative inverse-distance curve</p>
+              <h3>f(k) = cosine at k²-th largest</h3>
+            </div>
+            <output id="similarity-readout">Hover the curve</output>
+          </div>
+          <canvas id="similarity-chart" aria-label="Cosine similarity at every square-numbered descending rank"></canvas>
+          <div class="similarity-axis"><span>k = 1</span><span>k²-th largest pair</span><span>k = 1,546</span></div>
+          <div class="similarity-curve-divider"></div>
+          <div class="similarity-curve-heading">
+            <div>
+              <p>Display only</p>
+              <h3>g(r) = cosine at r-th smallest</h3>
+            </div>
+            <output id="ascending-readout">Hover the curve</output>
+          </div>
+          <canvas id="ascending-chart" aria-label="Cosine similarity by ordinary ascending pair rank"></canvas>
+          <div class="similarity-axis"><span>rank 1</span><span>ascending pair rank</span><span>rank 2,390,391</span></div>
+        </aside>
+        <p class="graph-caption"><span></span> Self-pairs excluded <i></i> Inverse square-rank distance <i></i> Full ascending distribution</p>
+      </section>
+
+      <section id="map-view" class="view-panel stage" role="tabpanel" aria-labelledby="map-tab" aria-label="Interactive word embedding">
       <canvas id="map" aria-label="Semantic scatter plot. Drag to pan, scroll to zoom, and select points for details."></canvas>
       <div class="grain" aria-hidden="true"></div>
 
@@ -86,15 +186,18 @@
       </div>
 
       <div class="map-hint"><span></span>Drag to move <span></span>Scroll to zoom <span></span>Click to pin</div>
-    </section>
+      </section>
+    </div>
 
     <footer>
-      <p><span class="status-light"></span><strong>Semantic map ready</strong> <span>·</span> GloVe 6B / 50D <span>→</span> t-SNE / cosine</p>
+      <p><span class="status-light"></span><strong>Semantic map ready</strong> <span>·</span> <span id="footer-method">GloVe 6B / 50D → t-SNE / cosine</span></p>
       <p>Source: <strong>df_name_words.txt</strong></p>
     </footer>
   </main>
 
   <script src="embedding-data.js"></script>
+  <script src="all-pair-similarity.js"></script>
   <script src="app.js"></script>
+  <script src="graph-views.js"></script>
 </body>
 </html>
