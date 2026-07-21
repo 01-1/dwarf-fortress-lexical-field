@@ -393,6 +393,8 @@
       }
       return { index, x, y, vx: 0, vy: 0, fx: 0, fy: 0, fixed: false, ring: depthByIndex.get(index) };
     });
+    physicsSize.value = String(physicsState.nodes.length);
+    physicsSizeValue.textContent = `${physicsState.nodes.length.toLocaleString()} words`;
     physicsState.byIndex = new Map(physicsState.nodes.map((node, index) => [node.index, index]));
     resetPhysicsWeightState(resolveRepulsionMethod(physicsState.nodes.length));
     const edgeKeys = new Set();
@@ -688,6 +690,10 @@
   document.querySelector("#physics-reheat").addEventListener("click", () => { physicsState.heat = 1; physicsState.paused = false; physicsStage.classList.remove("paused"); document.querySelector("#physics-toggle").textContent = "Pause"; });
   const physicsSize = document.querySelector("#physics-size");
   const physicsSizeValue = document.querySelector("#physics-size-value");
+  // Browsers may restore a range input's previous value across reloads. Keep
+  // the visible control and simulation state aligned with the product default.
+  physicsSize.value = String(physicsState.nodeLimit);
+  physicsSizeValue.textContent = `${physicsState.nodeLimit.toLocaleString()} words`;
   physicsSize.addEventListener("input", () => {
     physicsState.nodeLimit = Number(physicsSize.value);
     physicsSizeValue.textContent = `${physicsState.nodeLimit.toLocaleString()} words`;
