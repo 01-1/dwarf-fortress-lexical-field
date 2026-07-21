@@ -340,7 +340,7 @@
   const physicsState = {
     width: 0, height: 0, anchor: initialIndex, nodes: [], edges: [], byIndex: new Map(),
     hovered: null, dragging: null, dragMoved: false, pointerX: 0, pointerY: 0,
-    paused: false, heat: 1, frame: 0, lastTime: 0, nodeLimit: 42, sizeFrame: 0,
+    paused: false, heat: 1, frame: 0, lastTime: 0, nodeLimit: 300, sizeFrame: 0,
     zoom: 1, panX: 0, panY: 0, panning: false, panStartX: 0, panStartY: 0,
     repulsionMode: "auto", activeRepulsion: "exact", weightMethod: null, weightState: null,
   };
