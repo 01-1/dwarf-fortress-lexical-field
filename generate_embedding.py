@@ -277,6 +277,7 @@ def precompute_force_layout(similarities: np.ndarray, initial: np.ndarray) -> tu
     layout = positions
     layout -= np.median(layout, axis=0)
     radius = np.percentile(np.linalg.norm(layout, axis=1), 99)
+    diagnostics["normalizationRadius"] = round(float(radius), 8)
     return layout / max(radius, 1e-6), diagnostics
 
 
