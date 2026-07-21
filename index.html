@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#090d14">
+  <title>Dwarf Fortress Lexical Field — Semantic Word Map</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="app-shell">
+    <header class="masthead">
+      <div class="identity">
+        <div class="mark" aria-hidden="true"><span></span><span></span><span></span></div>
+        <div>
+          <p class="eyebrow">Semantic embedding / 2,187 entries</p>
+          <h1>Dwarf Fortress Lexical Field</h1>
+        </div>
+      </div>
+
+      <div class="search-wrap">
+        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m21 21-4.35-4.35m2.35-5.15a7.5 7.5 0 1 1-15 0 7.5 7.5 0 0 1 15 0Z"/></svg>
+        <input id="search" type="search" autocomplete="off" spellcheck="false" placeholder="Find a word…" aria-label="Find a word">
+        <kbd>/</kbd>
+        <div id="search-results" class="search-results" role="listbox"></div>
+      </div>
+
+      <div class="header-actions">
+        <button id="labels-button" class="icon-button active" type="button" aria-label="Toggle cluster labels" aria-pressed="true">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h10M4 18h7"/></svg>
+        </button>
+        <button id="motion-button" class="icon-button active" type="button" aria-label="Pause motion" aria-pressed="true">
+          <svg class="pause-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14M16 5v14"/></svg>
+          <svg class="play-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7Z"/></svg>
+        </button>
+        <button id="reset-button" class="text-button" type="button">Reset view</button>
+      </div>
+    </header>
+
+    <section class="stage" aria-label="Interactive word embedding">
+      <canvas id="map" aria-label="Semantic scatter plot. Drag to pan, scroll to zoom, and select points for details."></canvas>
+      <div class="grain" aria-hidden="true"></div>
+
+      <aside class="filters panel">
+        <div class="panel-heading">
+          <span>Parts of speech</span>
+          <span id="visible-count">2,187 visible</span>
+        </div>
+        <div class="filter-row" role="group" aria-label="Filter parts of speech">
+          <button type="button" class="filter active" data-pos="n"><i></i>Noun <b id="count-n">0</b></button>
+          <button type="button" class="filter active" data-pos="v"><i></i>Verb <b id="count-v">0</b></button>
+          <button type="button" class="filter active" data-pos="adj"><i></i>Adjective <b id="count-adj">0</b></button>
+          <button type="button" class="filter active" data-pos="?"><i></i>Other <b id="count-other">0</b></button>
+        </div>
+        <div class="mode-row">
+          <span>Color by</span>
+          <div class="segmented" role="group" aria-label="Color mode">
+            <button type="button" class="active" data-mode="cluster">Meaning</button>
+            <button type="button" data-mode="pos">Grammar</button>
+          </div>
+        </div>
+      </aside>
+
+      <aside id="inspector" class="inspector panel" aria-live="polite">
+        <button id="close-inspector" class="close-button" type="button" aria-label="Close details">×</button>
+        <div class="inspector-empty">
+          <div class="orbit-glyph" aria-hidden="true"><i></i><i></i><i></i></div>
+          <p>Explore the field</p>
+          <span>Hover over a point or search for a word to reveal its semantic neighborhood.</span>
+        </div>
+        <div class="inspector-content" hidden>
+          <p class="inspector-kicker"><span id="detail-dot"></span><span id="detail-pos"></span></p>
+          <h2 id="detail-word"></h2>
+          <p id="detail-meta" class="detail-meta"></p>
+          <div class="divider"></div>
+          <p class="neighbor-title">Closest meanings</p>
+          <div id="neighbors" class="neighbors"></div>
+          <p id="estimated-note" class="estimated-note" hidden>Position estimated from the word’s morphology.</p>
+        </div>
+      </aside>
+
+      <div class="zoom-control panel" aria-label="Zoom controls">
+        <button id="zoom-in" type="button" aria-label="Zoom in">+</button>
+        <span id="zoom-readout">100%</span>
+        <button id="zoom-out" type="button" aria-label="Zoom out">−</button>
+      </div>
+
+      <div class="map-hint"><span></span>Drag to move <span></span>Scroll to zoom <span></span>Click to pin</div>
+    </section>
+
+    <footer>
+      <p><span class="status-light"></span><strong>Semantic map ready</strong> <span>·</span> GloVe 6B / 50D <span>→</span> t-SNE / cosine</p>
+      <p>Source: <strong>df_name_words.txt</strong></p>
+    </footer>
+  </main>
+
+  <script src="embedding-data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
