@@ -342,7 +342,7 @@
     hovered: null, dragging: null, dragMoved: false, pointerX: 0, pointerY: 0,
     paused: false, heat: 1, frame: 0, lastTime: 0, nodeLimit: 42, sizeFrame: 0,
     zoom: 1, panX: 0, panY: 0, panning: false, panStartX: 0, panStartY: 0,
-    repulsionMode: "auto", activeRepulsion: "exact", weightState: null,
+    repulsionMode: "auto", activeRepulsion: "exact", weightMethod: null, weightState: null,
   };
 
   function physicsCenter() {
@@ -394,10 +394,7 @@
       return { index, x, y, vx: 0, vy: 0, fx: 0, fy: 0, fixed: false, ring: depthByIndex.get(index) };
     });
     physicsState.byIndex = new Map(physicsState.nodes.map((node, index) => [node.index, index]));
-    physicsState.weightState = forceModel.createWeightState(
-      physicsState.nodes,
-      (one, two) => inverseSquareRankDistance[similarityByteForPair(one, two)],
-    );
+    resetPhysicsWeightState(resolveRepulsionMethod(physicsState.nodes.length));
     const edgeKeys = new Set();
     physicsState.edges = [];
     physicsState.nodes.forEach((node, localIndex) => points[node.index].nn.forEach((neighborIndex, neighborRank) => {
@@ -418,15 +415,20 @@
   function stepPhysics() {
     const nodes = physicsState.nodes;
     const idealDistance = Math.max(12, 82 * Math.sqrt(42 / Math.max(42, nodes.length)));
-    forceModel.refreshLayoutWeights(nodes, physicsState.weightState);
+    const method = resolveRepulsionMethod(nodes.length);
+    if (physicsState.weightMethod !== method) resetPhysicsWeightState(method);
+    if (method === "exact") forceModel.refreshLayoutWeights(nodes, physicsState.weightState);
+    else forceModel.refreshApproximateWeightState(nodes, physicsState.weightState);
     forceModel.initializeForces(nodes);
 
     // Exact and Barnes–Hut both approximate the same Fruchterman–Reingold
-    // repulsive force. This selector affects computation, not semantic edges.
-    const method = resolveRepulsionMethod(nodes.length);
+    // repulsive force. Barnes–Hut also sparsifies semantic pairs.
     if (method === "exact") forceModel.applyExactRepulsion(nodes, idealDistance, physicsState.heat);
     else applyBarnesHutRepulsion(nodes, idealDistance);
-    forceModel.applySemanticStress(
+    const applySemantic = method === "exact"
+      ? forceModel.applySemanticStress
+      : forceModel.applySparseSemanticStress;
+    applySemantic(
       nodes,
       idealDistance,
       physicsState.heat,
@@ -436,6 +438,18 @@
     forceModel.integrate(nodes);
     physicsState.weightState.steps++;
     physicsState.heat = Math.max(.09, physicsState.heat * .992);
+  }
+
+  function resetPhysicsWeightState(method) {
+    const targetForPair = (one, two) => inverseSquareRankDistance[similarityByteForPair(one, two)];
+    physicsState.weightMethod = method;
+    physicsState.weightState = method === "exact"
+      ? forceModel.createWeightState(physicsState.nodes, targetForPair)
+      : forceModel.createApproximateWeightState(
+        physicsState.nodes,
+        targetForPair,
+        (node) => points[node.index].an || points[node.index].nn,
+      );
   }
 
   function resolveRepulsionMethod(nodeCount) {
@@ -452,7 +466,10 @@
   function updateRepulsionStatus() {
     const label = physicsState.activeRepulsion === "exact" ? "exact O(n²)" : "Barnes–Hut O(n log n)";
     const automatic = physicsState.repulsionMode === "auto" ? "Automatic · " : "";
-    document.querySelector("#physics-method-status").textContent = `${automatic}${label} repulsion · forces O(n²) · ranks O(n² log n) / 10 steps`;
+    const forces = physicsState.activeRepulsion === "exact"
+      ? "forces O(n²) · ranks O(n² log n) / 10 steps"
+      : "forces O(n√n) · approximate ranks O(n√n) / 10 steps";
+    document.querySelector("#physics-method-status").textContent = `${automatic}${label} repulsion · ${forces}`;
   }
 
   function repelPair(one, two, a, b, idealDistance, symmetric) {
@@ -681,7 +698,8 @@
   const physicsMethod = document.querySelector("#physics-method");
   physicsMethod.addEventListener("change", () => {
     physicsState.repulsionMode = physicsMethod.value;
-    physicsState.activeRepulsion = resolveRepulsionMethod(physicsState.nodes.length);
+    const method = resolveRepulsionMethod(physicsState.nodes.length);
+    resetPhysicsWeightState(method);
     physicsState.heat = 1;
     updateRepulsionStatus();
   });
@@ -700,7 +718,7 @@
   const viewNames = { static: "Settled full-field force layout", physics: "Live physics simulation", similarity: "All-pairs similarity curve", map: "Semantic map ready" };
   const viewMethods = {
     static: "Exact all-pairs forces → settled snapshot",
-    physics: "JavaScript forces → live all-pairs stress",
+    physics: "JavaScript forces → exact or O(n√n) semantic stress",
     similarity: "2,390,391 cosine values → square ranks",
     map: "GloVe 6B / 50D → t-SNE / cosine",
   };

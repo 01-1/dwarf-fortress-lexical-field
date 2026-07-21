@@ -226,9 +226,18 @@ def main() -> None:
     np.fill_diagonal(similarities, -np.inf)
 
     points = []
+    approximate_candidate_count = min(
+        len(entries) - 1,
+        4 * math.ceil(math.sqrt(len(entries))),
+    )
     for idx, ((word, pos), xy) in enumerate(zip(entries, projection)):
-        nearest = np.argpartition(-similarities[idx], 8)[:8]
-        nearest = nearest[np.argsort(-similarities[idx, nearest])]
+        approximate_nearest = np.argpartition(
+            -similarities[idx], approximate_candidate_count - 1,
+        )[:approximate_candidate_count]
+        approximate_nearest = approximate_nearest[
+            np.argsort(-similarities[idx, approximate_nearest])
+        ]
+        nearest = approximate_nearest[:8]
         points.append({
             "w": word,
             "p": pos,
@@ -239,6 +248,7 @@ def main() -> None:
             "c": int(labels[idx]),
             "nn": [int(value) for value in nearest],
             "ns": [round(float(similarities[idx, value]), 5) for value in nearest],
+            "an": [int(value) for value in approximate_nearest],
             "count": counts[(word, pos)],
             "estimated": bool(estimated[idx]),
         })

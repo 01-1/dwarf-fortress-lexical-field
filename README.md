@@ -14,10 +14,12 @@ name generator. It has four linked views:
   2D ranks refresh every 10 simulation steps. Every word is draggable, and the
   field-size slider expands from 10 words to all 2,187.
   Additional repulsion can be selected as exact O(n²) or Barnes–Hut
-  O(n log n), with automatic selection as the default; semantic stress itself
-  remains O(n²). Recomputing current-layout ranks is O(n² log n) every 10
-  simulation steps. The canvas supports cursor-centered wheel zoom and
-  shift-drag panning.
+  O(n log n), with automatic selection as the default. Exact mode retains all
+  O(n²) semantic pairs. Barnes–Hut mode unions each word's top `ceil(sqrt(n))`
+  precomputed semantic candidates with its top `ceil(sqrt(n))` current 2D
+  candidates from a k-d tree, producing O(n sqrt(n)) approximate semantic
+  forces and refreshing those candidates every 10 steps. The canvas supports
+  cursor-centered wheel zoom and shift-drag panning.
 - **Settled force** — a static snapshot made by running the live force equations
   over all 2,187 movable words, using exact repulsion and exact semantic forces
   across all 2,390,391 unique non-self pairs. It stops after satisfying a

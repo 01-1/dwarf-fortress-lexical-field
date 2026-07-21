@@ -113,6 +113,128 @@
     }
   }
 
+  function heapPush(heap, entry, limit) {
+    if (heap.length < limit) {
+      heap.push(entry);
+      let index = heap.length - 1;
+      while (index > 0) {
+        const parent = (index - 1) >> 1;
+        if (heap[parent].distance >= heap[index].distance) break;
+        [heap[parent], heap[index]] = [heap[index], heap[parent]];
+        index = parent;
+      }
+      return;
+    }
+    if (entry.distance >= heap[0].distance) return;
+    heap[0] = entry;
+    let index = 0;
+    while (true) {
+      const left = index * 2 + 1, right = left + 1;
+      if (left >= heap.length) break;
+      const largest = right < heap.length && heap[right].distance > heap[left].distance ? right : left;
+      if (heap[index].distance >= heap[largest].distance) break;
+      [heap[index], heap[largest]] = [heap[largest], heap[index]];
+      index = largest;
+    }
+  }
+
+  function buildKdTree(nodes, indices = nodes.map((_node, index) => index), depth = 0) {
+    if (!indices.length) return null;
+    const axis = depth & 1;
+    indices.sort((a, b) => (axis ? nodes[a].y - nodes[b].y : nodes[a].x - nodes[b].x) || a - b);
+    const middle = indices.length >> 1;
+    return {
+      index: indices[middle], axis,
+      left: buildKdTree(nodes, indices.slice(0, middle), depth + 1),
+      right: buildKdTree(nodes, indices.slice(middle + 1), depth + 1),
+    };
+  }
+
+  function nearestFromKdTree(nodes, tree, queryIndex, limit) {
+    const query = nodes[queryIndex], heap = [];
+    function visit(branch) {
+      if (!branch) return;
+      const candidate = nodes[branch.index];
+      const axisDelta = branch.axis ? query.y - candidate.y : query.x - candidate.x;
+      const near = axisDelta < 0 ? branch.left : branch.right;
+      const far = axisDelta < 0 ? branch.right : branch.left;
+      visit(near);
+      if (branch.index !== queryIndex) {
+        const dx = candidate.x - query.x, dy = candidate.y - query.y;
+        heapPush(heap, { index: branch.index, distance: dx * dx + dy * dy }, limit);
+      }
+      if (heap.length < limit || axisDelta * axisDelta < heap[0].distance) visit(far);
+    }
+    visit(tree);
+    return heap.sort((a, b) => a.distance - b.distance || a.index - b.index).map((entry) => entry.index);
+  }
+
+  function buildSparsePairs(nodes, semanticDirected, layoutDirected) {
+    const selected = new Map();
+    for (let a = 0; a < nodes.length; a++) {
+      const candidates = new Set([
+        ...semanticDirected[a].keys(),
+        ...layoutDirected[a].keys(),
+      ]);
+      candidates.forEach((b) => {
+        const weight = (
+          (semanticDirected[a].get(b) || 0) + (semanticDirected[b].get(a) || 0)
+          + (layoutDirected[a].get(b) || 0) + (layoutDirected[b].get(a) || 0)
+        ) / 2;
+        const left = Math.min(a, b), right = Math.max(a, b), key = `${left}:${right}`;
+        const existing = selected.get(key);
+        if (!existing || weight > existing.weight) selected.set(key, { a: left, b: right, weight });
+      });
+    }
+    return [...selected.values()];
+  }
+
+  function createApproximateWeightState(nodes, normalizedTargetForPair, semanticCandidatesForNode) {
+    const rankProfile = makeExponentialRankProfile(nodes.length);
+    const forceNeighborCount = Math.max(1, Math.ceil(Math.sqrt(nodes.length)));
+    const candidateCount = Math.min(nodes.length - 1, forceNeighborCount);
+    const localByGlobal = new Map(nodes.map((node, index) => [node.index, index]));
+    const semanticDirected = nodes.map((node) => {
+      const result = new Map();
+      for (const globalIndex of semanticCandidatesForNode(node)) {
+        const localIndex = localByGlobal.get(globalIndex);
+        if (localIndex == null || localIndex === localByGlobal.get(node.index) || result.has(localIndex)) continue;
+        result.set(localIndex, rankProfile.weights[result.size]);
+        if (result.size >= candidateCount) break;
+      }
+      return result;
+    });
+    const weightState = {
+      approximate: true,
+      rankProfile,
+      forceNeighborCount,
+      candidateCount,
+      semanticDirected,
+      layoutDirected: null,
+      pairs: [],
+      steps: 0,
+    };
+    refreshApproximateWeightState(nodes, weightState, true);
+    return weightState;
+  }
+
+  function refreshApproximateWeightState(nodes, weightState, force = false) {
+    if (!force && (weightState.steps === 0 || weightState.steps % LAYOUT_WEIGHT_REFRESH !== 0)) return;
+    const tree = buildKdTree(nodes);
+    weightState.layoutDirected = nodes.map((_node, index) => {
+      const result = new Map();
+      nearestFromKdTree(nodes, tree, index, weightState.candidateCount).forEach((neighbor, rank) => {
+        result.set(neighbor, weightState.rankProfile.weights[rank]);
+      });
+      return result;
+    });
+    weightState.pairs = buildSparsePairs(
+      nodes,
+      weightState.semanticDirected,
+      weightState.layoutDirected,
+    );
+  }
+
   function applyExactRepulsion(nodes, idealDistance, heat) {
     for (let a = 0; a < nodes.length; a++) {
       for (let b = a + 1; b < nodes.length; b++) {
@@ -132,30 +254,38 @@
     }
   }
 
+  function applySemanticPair(nodes, a, b, pairWeight, idealDistance, strength, heatFactor, normalizedTargetForPair) {
+    const one = nodes[a], two = nodes[b];
+    let dx = two.x - one.x, dy = two.y - one.y;
+    const distance = Math.max(.01, Math.hypot(dx, dy));
+    if (distance < .02) {
+      dx = .01 + (a % 3) * .005;
+      dy = .01 + (b % 3) * .005;
+    }
+    const targetDistance = idealDistance * normalizedTargetForPair(one.index, two.index);
+    const force = pairWeight * (distance - targetDistance) * strength * heatFactor;
+    const forceX = dx / distance * force, forceY = dy / distance * force;
+    one.fx += forceX; one.fy += forceY;
+    two.fx -= forceX; two.fy -= forceY;
+  }
+
   function applySemanticStress(nodes, idealDistance, heat, normalizedTargetForPair, weightState) {
-    const strength = .04 / Math.max(1, nodes.length);
-    const heatFactor = .45 + heat * .55;
+    const strength = .04 / Math.max(1, nodes.length), heatFactor = .45 + heat * .55;
     let pairOffset = 0;
     for (let a = 0; a < nodes.length; a++) {
       for (let b = a + 1; b < nodes.length; b++) {
-        const one = nodes[a], two = nodes[b];
-        let dx = two.x - one.x, dy = two.y - one.y;
-        const distance = Math.max(.01, Math.hypot(dx, dy));
-        if (distance < .02) {
-          dx = .01 + (a % 3) * .005;
-          dy = .01 + (b % 3) * .005;
-        }
-        const normalizedTarget = normalizedTargetForPair(one.index, two.index);
-        const targetDistance = idealDistance * normalizedTarget;
-        const error = distance - targetDistance;
         const pairWeight = weightState.semantic[pairOffset] + weightState.layout[pairOffset];
         pairOffset++;
-        const force = pairWeight * error * strength * heatFactor;
-        const forceX = dx / distance * force, forceY = dy / distance * force;
-        one.fx += forceX; one.fy += forceY;
-        two.fx -= forceX; two.fy -= forceY;
+        applySemanticPair(nodes, a, b, pairWeight, idealDistance, strength, heatFactor, normalizedTargetForPair);
       }
     }
+  }
+
+  function applySparseSemanticStress(nodes, idealDistance, heat, normalizedTargetForPair, weightState) {
+    const strength = .04 / Math.max(1, nodes.length), heatFactor = .45 + heat * .55;
+    weightState.pairs.forEach(({ a, b, weight }) => {
+      applySemanticPair(nodes, a, b, weight, idealDistance, strength, heatFactor, normalizedTargetForPair);
+    });
   }
 
   function integrate(nodes) {
@@ -188,9 +318,12 @@
     makeExponentialRankProfile,
     createWeightState,
     refreshLayoutWeights,
+    createApproximateWeightState,
+    refreshApproximateWeightState,
     initializeForces,
     applyExactRepulsion,
     applySemanticStress,
+    applySparseSemanticStress,
     integrate,
     stepExact,
   };
