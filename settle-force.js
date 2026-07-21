@@ -45,9 +45,10 @@ const requiredSettledSteps = 40;
 const velocityTolerance = idealDistance * 2e-3;
 const p99VelocityTolerance = idealDistance * 8e-3;
 let rmsVelocity = Infinity, p99Velocity = Infinity, maximumVelocity = Infinity;
+const weightState = ForceModel.createWeightState(nodes, normalizedTargetForPair);
 
 while (settledSteps < requiredSettledSteps) {
-  heat = ForceModel.stepExact(nodes, idealDistance, heat, normalizedTargetForPair);
+  heat = ForceModel.stepExact(nodes, idealDistance, heat, normalizedTargetForPair, weightState);
   iterations++;
   const speeds = nodes.map((node) => Math.hypot(node.vx, node.vy)).sort((a, b) => a - b);
   rmsVelocity = Math.sqrt(speeds.reduce((sum, speed) => sum + speed * speed, 0) / count);
@@ -92,7 +93,12 @@ data.meta.graphDiagnostics = {
   semanticForce: "exact O(n^2)",
   implementation: "force-model.js",
   allNodesMovable: true,
-  pairWeight: "1 / (target + 0.001) + clamp(ideal / current_distance, 0, 100)",
+  pairWeight: "additive exponential ranks for semantic and current-layout closeness",
+  emphasizedNeighbors: ForceModel.EMPHASIZED_NEIGHBORS,
+  emphasizedWeightShare: ForceModel.EMPHASIZED_SHARE,
+  actualEmphasizedWeightShare: Number(weightState.rankProfile.topShare.toFixed(8)),
+  exponentialDecayBase: Number(weightState.rankProfile.decayBase.toFixed(12)),
+  layoutWeightRefresh: ForceModel.LAYOUT_WEIGHT_REFRESH,
   normalizationRadius: Number(normalizationRadius.toFixed(8)),
 };
 

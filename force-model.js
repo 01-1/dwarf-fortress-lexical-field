@@ -5,8 +5,9 @@
 }(typeof globalThis !== "undefined" ? globalThis : this, () => {
   "use strict";
 
-  const PROXIMITY_MIN = 0;
-  const PROXIMITY_MAX = 100;
+  const EMPHASIZED_NEIGHBORS = 10;
+  const EMPHASIZED_SHARE = .75;
+  const LAYOUT_WEIGHT_REFRESH = 10;
 
   function makeTargetLookup(similarityBytes) {
     const histogram = new Uint32Array(256);
@@ -28,6 +29,90 @@
     });
   }
 
+  function makeExponentialRankProfile(nodeCount) {
+    const relationshipCount = Math.max(0, nodeCount - 1);
+    if (!relationshipCount) return { weights: new Float64Array(0), decayBase: 0, topShare: 1 };
+    const emphasized = Math.min(EMPHASIZED_NEIGHBORS, relationshipCount);
+    let decayBase = 1;
+    if (emphasized < relationshipCount && emphasized / relationshipCount < EMPHASIZED_SHARE) {
+      let low = 0, high = 1;
+      for (let iteration = 0; iteration < 64; iteration++) {
+        const candidate = (low + high) / 2;
+        const top = (1 - candidate ** emphasized) / (1 - candidate);
+        const all = (1 - candidate ** relationshipCount) / (1 - candidate);
+        if (top / all > EMPHASIZED_SHARE) low = candidate;
+        else high = candidate;
+      }
+      decayBase = (low + high) / 2;
+    }
+    const weights = Float64Array.from(
+      { length: relationshipCount },
+      (_unused, rank) => decayBase ** rank,
+    );
+    const total = weights.reduce((sum, value) => sum + value, 0);
+    const componentBudget = relationshipCount / 2;
+    weights.forEach((value, rank) => { weights[rank] = value * componentBudget / total; });
+    const emphasizedWeight = weights.slice(0, emphasized).reduce((sum, value) => sum + value, 0);
+    return { weights, decayBase, topShare: emphasizedWeight / componentBudget };
+  }
+
+  function buildRankPairWeights(nodes, rankProfile, metricForPair) {
+    const count = nodes.length;
+    const directed = new Float32Array(count * count);
+    for (let a = 0; a < count; a++) {
+      const ranked = [];
+      for (let b = 0; b < count; b++) {
+        if (a !== b) ranked.push({ b, value: metricForPair(nodes[a], nodes[b]) });
+      }
+      ranked.sort((one, two) => one.value - two.value || one.b - two.b);
+      for (let start = 0; start < ranked.length;) {
+        let end = start + 1;
+        while (end < ranked.length && ranked[end].value === ranked[start].value) end++;
+        let tiedWeight = 0;
+        for (let rank = start; rank < end; rank++) tiedWeight += rankProfile.weights[rank];
+        tiedWeight /= end - start;
+        for (let rank = start; rank < end; rank++) directed[a * count + ranked[rank].b] = tiedWeight;
+        start = end;
+      }
+    }
+    const pairs = new Float32Array(count * (count - 1) / 2);
+    let offset = 0;
+    for (let a = 0; a < count; a++) {
+      for (let b = a + 1; b < count; b++) {
+        pairs[offset++] = (directed[a * count + b] + directed[b * count + a]) / 2;
+      }
+    }
+    return pairs;
+  }
+
+  function createWeightState(nodes, normalizedTargetForPair) {
+    const rankProfile = makeExponentialRankProfile(nodes.length);
+    return {
+      rankProfile,
+      semantic: buildRankPairWeights(
+        nodes,
+        rankProfile,
+        (one, two) => normalizedTargetForPair(one.index, two.index),
+      ),
+      layout: buildRankPairWeights(
+        nodes,
+        rankProfile,
+        (one, two) => Math.hypot(two.x - one.x, two.y - one.y),
+      ),
+      steps: 0,
+    };
+  }
+
+  function refreshLayoutWeights(nodes, weightState) {
+    if (weightState.steps > 0 && weightState.steps % LAYOUT_WEIGHT_REFRESH === 0) {
+      weightState.layout = buildRankPairWeights(
+        nodes,
+        weightState.rankProfile,
+        (one, two) => Math.hypot(two.x - one.x, two.y - one.y),
+      );
+    }
+  }
+
   function applyExactRepulsion(nodes, idealDistance, heat) {
     for (let a = 0; a < nodes.length; a++) {
       for (let b = a + 1; b < nodes.length; b++) {
@@ -47,9 +132,10 @@
     }
   }
 
-  function applySemanticStress(nodes, idealDistance, heat, normalizedTargetForPair) {
+  function applySemanticStress(nodes, idealDistance, heat, normalizedTargetForPair, weightState) {
     const strength = .04 / Math.max(1, nodes.length);
     const heatFactor = .45 + heat * .55;
+    let pairOffset = 0;
     for (let a = 0; a < nodes.length; a++) {
       for (let b = a + 1; b < nodes.length; b++) {
         const one = nodes[a], two = nodes[b];
@@ -61,16 +147,10 @@
         }
         const normalizedTarget = normalizedTargetForPair(one.index, two.index);
         const targetDistance = idealDistance * normalizedTarget;
-        const sammonWeight = 1 / (normalizedTarget + .001);
-        const rawProximityWeight = idealDistance / distance;
-        const proximityWeight = Math.min(PROXIMITY_MAX, Math.max(PROXIMITY_MIN, rawProximityWeight));
-        const proximityDerivative = rawProximityWeight === proximityWeight
-          ? -idealDistance / (distance * distance)
-          : 0;
         const error = distance - targetDistance;
-        const weightedError = (sammonWeight + proximityWeight) * error
-          + .5 * proximityDerivative * error * error;
-        const force = weightedError * strength * heatFactor;
+        const pairWeight = weightState.semantic[pairOffset] + weightState.layout[pairOffset];
+        pairOffset++;
+        const force = pairWeight * error * strength * heatFactor;
         const forceX = dx / distance * force, forceY = dy / distance * force;
         one.fx += forceX; one.fy += forceY;
         two.fx -= forceX; two.fy -= forceY;
@@ -90,18 +170,24 @@
     });
   }
 
-  function stepExact(nodes, idealDistance, heat, normalizedTargetForPair) {
+  function stepExact(nodes, idealDistance, heat, normalizedTargetForPair, weightState) {
+    refreshLayoutWeights(nodes, weightState);
     initializeForces(nodes);
     applyExactRepulsion(nodes, idealDistance, heat);
-    applySemanticStress(nodes, idealDistance, heat, normalizedTargetForPair);
+    applySemanticStress(nodes, idealDistance, heat, normalizedTargetForPair, weightState);
     integrate(nodes);
+    weightState.steps++;
     return Math.max(.09, heat * .992);
   }
 
   return {
-    PROXIMITY_MIN,
-    PROXIMITY_MAX,
+    EMPHASIZED_NEIGHBORS,
+    EMPHASIZED_SHARE,
+    LAYOUT_WEIGHT_REFRESH,
     makeTargetLookup,
+    makeExponentialRankProfile,
+    createWeightState,
+    refreshLayoutWeights,
     initializeForces,
     applyExactRepulsion,
     applySemanticStress,

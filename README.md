@@ -8,15 +8,16 @@ name generator. It has four linked views:
 - **Physics demo** — an all-pairs target-distance stress model integrated live
   in JavaScript over the selected semantic field. Every pair gets distance
   `sqrt(descending_rank / pair_count)`, the normalized inverse of the global
-  square-rank-largest cosine curve, weighted by `1 / (distance + 0.001)` so
-  semantically close-pair errors matter more. A second bounded inverse-distance
-  weight updates every frame and is added to the Sammon weight, prioritizing
-  pairs currently closest in the evolving 2D layout. Every word is draggable,
-  and the field-size slider expands from 10 words to all 2,187.
+  square-rank-largest cosine curve. Semantic-neighbor rank and evolving
+  2D-neighbor rank each receive an additive exponential weight budget; for
+  fields larger than 14 words, the closest 10 consume 75% of each budget. The
+  2D ranks refresh every 10 simulation steps. Every word is draggable, and the
+  field-size slider expands from 10 words to all 2,187.
   Additional repulsion can be selected as exact O(n²) or Barnes–Hut
   O(n log n), with automatic selection as the default; semantic stress itself
-  remains O(n²). The canvas supports cursor-centered wheel zoom and shift-drag
-  panning.
+  remains O(n²). Recomputing current-layout ranks is O(n² log n) every 10
+  simulation steps. The canvas supports cursor-centered wheel zoom and
+  shift-drag panning.
 - **Settled force** — a static snapshot made by running the live force equations
   over all 2,187 movable words, using exact repulsion and exact semantic forces
   across all 2,390,391 unique non-self pairs. It stops after satisfying a

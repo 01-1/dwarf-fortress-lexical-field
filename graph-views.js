@@ -342,7 +342,7 @@
     hovered: null, dragging: null, dragMoved: false, pointerX: 0, pointerY: 0,
     paused: false, heat: 1, frame: 0, lastTime: 0, nodeLimit: 42, sizeFrame: 0,
     zoom: 1, panX: 0, panY: 0, panning: false, panStartX: 0, panStartY: 0,
-    repulsionMode: "auto", activeRepulsion: "exact",
+    repulsionMode: "auto", activeRepulsion: "exact", weightState: null,
   };
 
   function physicsCenter() {
@@ -394,6 +394,10 @@
       return { index, x, y, vx: 0, vy: 0, fx: 0, fy: 0, fixed: false, ring: depthByIndex.get(index) };
     });
     physicsState.byIndex = new Map(physicsState.nodes.map((node, index) => [node.index, index]));
+    physicsState.weightState = forceModel.createWeightState(
+      physicsState.nodes,
+      (one, two) => inverseSquareRankDistance[similarityByteForPair(one, two)],
+    );
     const edgeKeys = new Set();
     physicsState.edges = [];
     physicsState.nodes.forEach((node, localIndex) => points[node.index].nn.forEach((neighborIndex, neighborRank) => {
@@ -414,6 +418,7 @@
   function stepPhysics() {
     const nodes = physicsState.nodes;
     const idealDistance = Math.max(12, 82 * Math.sqrt(42 / Math.max(42, nodes.length)));
+    forceModel.refreshLayoutWeights(nodes, physicsState.weightState);
     forceModel.initializeForces(nodes);
 
     // Exact and Barnes–Hut both approximate the same Fruchterman–Reingold
@@ -426,8 +431,10 @@
       idealDistance,
       physicsState.heat,
       (one, two) => inverseSquareRankDistance[similarityByteForPair(one, two)],
+      physicsState.weightState,
     );
     forceModel.integrate(nodes);
+    physicsState.weightState.steps++;
     physicsState.heat = Math.max(.09, physicsState.heat * .992);
   }
 
@@ -445,7 +452,7 @@
   function updateRepulsionStatus() {
     const label = physicsState.activeRepulsion === "exact" ? "exact O(n²)" : "Barnes–Hut O(n log n)";
     const automatic = physicsState.repulsionMode === "auto" ? "Automatic · " : "";
-    document.querySelector("#physics-method-status").textContent = `${automatic}${label} repulsion · semantic stress O(n²)`;
+    document.querySelector("#physics-method-status").textContent = `${automatic}${label} repulsion · forces O(n²) · ranks O(n² log n) / 10 steps`;
   }
 
   function repelPair(one, two, a, b, idealDistance, symmetric) {

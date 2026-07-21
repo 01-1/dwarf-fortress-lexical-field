@@ -73,7 +73,7 @@
         <div class="graph-intro">
           <p class="eyebrow"><span class="live-simulation-dot"></span> Live local simulation</p>
           <h2>Pull on<br>a meaning.</h2>
-          <p>All inverse-rank pair targets add Sammon and current-layout proximity weights. Drag a node, or click one to rebuild around it.</p>
+          <p>Inverse-rank targets add exponential semantic- and current-layout-neighbor weights, each concentrating 75% on the closest 10 in fields larger than 14 words. Drag a node, or click one to rebuild around it.</p>
         </div>
         <aside class="graph-focus physics-focus panel" aria-live="polite">
           <p class="graph-focus-label">Anchor word</p>
@@ -91,7 +91,7 @@
               <option value="exact">Exact O(n²)</option>
               <option value="barnes-hut">Barnes–Hut O(n log n)</option>
             </select>
-            <p id="physics-method-status">Automatic · exact O(n²) repulsion · semantic stress O(n²)</p>
+            <p id="physics-method-status">Automatic · exact O(n²) repulsion · forces O(n²) · ranks O(n² log n) / 10 steps</p>
           </div>
           <div class="physics-actions">
             <button id="physics-toggle" type="button">Pause</button>
